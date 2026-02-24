@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent - Thương mại điện tử</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="index.js" defer></script>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <header class="chat-header">
+            <h1>AI Agent - E-commerce</h1>
+            <p>Tìm kiếm sản phẩm thông minh</p>
+        </header>
+
+        <!-- Messages -->
+        <main class="chat-messages" id="chatMessages">
+            <div class="message agent">
+                <span class="message-label">AI Agent</span>
+                <div class="message-content">
+                    Xin chào! Tôi có thể giúp bạn tìm kiếm sản phẩm.
+                    Hãy hỏi tôi về laptop, điện thoại với các tiêu chí như giá, pin, RAM...
+                </div>
+            </div>
+        </main>
+
+        <!-- Suggestions -->
+        <section class="suggestions">
+            <p>Gợi ý câu hỏi:</p>
+            <div class="suggestion-chips">
+                <button class="chip">Điện thoại Android dưới 10 triệu ?</button>
+                <button class="chip">Laptop pin trâu dưới 20 triệu?</button>
+                <button class="chip">Ốp lưng</button>
+                <button class="chip">Áo bán chạy</button>
+                <button class="chip">Máy hút bụi dưới 10 triệu</button>
+            </div>
+        </section>
+
+        <!-- Input -->
+        <form class="chat-input">
+            <input type="text" id="userInput" placeholder="Nhập câu hỏi của bạn...">
+            <button type="submit">Gửi</button>
+        </form>
+
+    </div>
+</body>
+</html>

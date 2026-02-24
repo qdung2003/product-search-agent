@@ -39,20 +39,21 @@ cp .env.example .env
 # Sửa .env: thêm OPENAI_API_KEY và DB credentials
 
 # 3. Tạo database & seed data
-python seed_data.py
+python -m python.seed_data
 
 # 4. Chạy server
-python -m backend.app
+python -m python.app
 # → http://localhost:5000
 
 # 5. Mở frontend
-# Mở frontend.html trong browser
+# Mở frontend/trang-chu/index.html trong browser
 ```
 
 ## Project Structure
 
 ```
-backend/
+python/
+├── __init__.py     # Package init
 ├── app.py          # Flask API + LangGraph integration
 ├── graph.py        # StateGraph definition (nodes + edges)
 ├── nodes.py        # Node functions (classify, search, answer...)
@@ -60,12 +61,15 @@ backend/
 ├── config.py       # Category mapping + whitelist columns
 ├── tools.py        # Tool schema + system prompts
 ├── sql_builder.py  # SQL builder với security validation
-└── database.py     # PostgreSQL connection
+├── database.py     # PostgreSQL connection
+├── models.py       # SQLAlchemy models
+└── seed_data.py    # Database seeder (5 categories, 50 products)
 
-frontend.html       # Chat UI
-frontend.js         # API client
-frontend.css        # Styling
-seed_data.py        # Database seeder (5 categories, 50 products)
+frontend/
+├── trang-chu/      # Trang chủ chat UI
+└── danh-sach-san-pham/
+
+backend.py          # Entry point (python backend.py)
 ```
 
 ## Supported Categories

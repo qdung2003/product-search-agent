@@ -1,20 +1,13 @@
 from .config import CATEGORY_MAP
+from unidecode import unidecode
+import re
 
-
-def resolve_column(category: str, column: str) -> str | None:
+def resolve_column(allowed_columns: list, column: str) -> str | None:
     """
     Tìm column trong whitelist. Nếu AI gửi thiếu table prefix (vd: "price"),
     tự tìm match trong whitelist (vd: "posts.price").
     Trả về full table.column nếu hợp lệ, None nếu không.
     """
-    if category not in CATEGORY_MAP:
-        return None
-
-    allowed_columns = []
-    for table, cols in CATEGORY_MAP[category]["columns"].items():
-        for col in cols:
-            allowed_columns.append(f"{table}.{col}")
-
     # Đã có prefix → kiểm tra trực tiếp
     if column in allowed_columns:
         return column
@@ -27,20 +20,20 @@ def resolve_column(category: str, column: str) -> str | None:
     return None
 
 
-def build_sql(category: str, product_type: str = None, filters: list = None,
-              sort_column: str = None, sort_direction: str = "ASC", **kwargs) -> tuple:
+def build_sql(category: str, product_name: str = None, filters: list = None,
+              sort_column: str = None, sort_direction: str = "ASC") -> tuple:
     """
     Backend quyết định: Build SQL an toàn với parameterized query
 
     Args:
         category: Danh mục sản phẩm
+        product_name: tên sản phẩm cụ thể (nếu có)
         filters: List các filter [{column, operator, value}, ...]
         sort_column: Cột để ORDER BY
         sort_direction: ASC hoặc DESC
-        limit: Số lượng kết quả
 
     Returns:
-        (sql, params) tuple để execute với parameterized query
+        (sql, params) tuple để execute với query_db()
     """
     if category not in CATEGORY_MAP:
         return None, None
@@ -48,9 +41,15 @@ def build_sql(category: str, product_type: str = None, filters: list = None,
     table = CATEGORY_MAP[category]["table"]
     category_id = CATEGORY_MAP[category]["id"]
 
+    # Build allowed_columns 1 lần, dùng chung cho filters và sort
+    allowed_columns = []
+    for tbl, cols in CATEGORY_MAP[category]["columns"].items():
+        for col in cols:
+            allowed_columns.append(f"{tbl}.{col}")
+
     # Base SQL với JOIN 4 bảng: posts, products, brands, detail_table
     sql = f"""
-        SELECT products.name, posts.price, brands.brand, {table}.*
+        SELECT posts.description, posts.price, posts.sale_price, posts.currency, posts.quantity, posts.sold_count, products.name, brands.brand, {table}.*
         FROM posts
         INNER JOIN products ON posts.product_id = products.product_id
         INNER JOIN brands ON products.brand_id = brands.id
@@ -60,36 +59,19 @@ def build_sql(category: str, product_type: str = None, filters: list = None,
     """
     params = [category_id]
 
-    # Backend validate product_type trước khi dùng ILIKE
-    if product_type and product_type.strip():
-        kw = product_type.strip()
-        kw_lower = kw.lower().replace(" ", "")
-        cat_lower = category.lower().replace(" ", "")
-
-        # Lấy tất cả giá trị filter để so sánh
-        filter_values = set()
-        if filters:
-            for f in filters:
-                v = str(f.get("value", "")).lower()
-                if v:
-                    filter_values.add(v)
-
-        skip = False
-        # 1. Trùng tên category → bỏ qua (cùng cấp)
-        if kw_lower == cat_lower:
-            skip = True
-        # 2. Quá dài (>3 từ) → AI gửi cả câu hỏi, bỏ qua
-        elif len(kw.split()) > 3:
-            skip = True
-        # 3. Trùng giá trị thuộc tính trong filter → bỏ qua (là attribute, không phải tên)
-        elif kw.lower() in filter_values:
-            skip = True
-
-        if skip:
-            print(f"⚠️ Backend bỏ qua product_type: '{kw}'")
-        else:
-            sql += " AND unaccent(products.name) ILIKE unaccent(%s)"
-            params.append(f"%{kw}%")
+    # Backend validate product_name: dùng EXISTS để check + lọc trong 1 câu SQL
+    if product_name and product_name.strip():
+        productName = unidecode(re.sub(r'\s+', ' ', product_name.strip()))
+        sql += f"""
+            AND (
+                CASE
+                    WHEN EXISTS (SELECT 1 FROM products p2 INNER JOIN {table} t2 ON p2.product_id = t2.product_id WHERE p2.name ILIKE %s)
+                    THEN products.name ILIKE %s
+                    ELSE true
+                END
+            )
+        """
+        params.extend([f"%{productName}%"] * 2)
 
     # Backend validate và build WHERE an toàn
     if filters:
@@ -99,7 +81,7 @@ def build_sql(category: str, product_type: str = None, filters: list = None,
             value = f.get("value")
 
             # Resolve column (whitelist + auto-prefix)
-            resolved = resolve_column(category, column)
+            resolved = resolve_column(allowed_columns, column)
             if not resolved:
                 print(f"⚠️ Backend từ chối column không hợp lệ: {column}")
                 continue
@@ -109,16 +91,15 @@ def build_sql(category: str, product_type: str = None, filters: list = None,
                 print(f"⚠️ Backend từ chối operator không hợp lệ: {operator}")
                 continue
 
+            sql += f" AND {resolved} {operator} %s"
             # ILIKE: tìm theo tên, wrap %value%
             if operator == "ILIKE":
-                sql += f" AND {resolved} ILIKE %s"
                 params.append(f"%{value}%")
             else:
-                sql += f" AND {resolved} {operator} %s"
                 params.append(value)
 
     # Backend validate ORDER BY
-    resolved_sort = resolve_column(category, sort_column) if sort_column else None
+    resolved_sort = resolve_column(allowed_columns, sort_column) if sort_column else None
     if resolved_sort:
         direction = "DESC" if sort_direction == "DESC" else "ASC"
         sql += f" ORDER BY {resolved_sort} {direction}"

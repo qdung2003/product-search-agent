@@ -18,35 +18,7 @@ llm = ChatOpenAI(model=MODEL, api_key=OPENAI_API_KEY)
 
 
 # =============================================================================
-# NODE 1: Phân loại ý định (product_search vs chitchat)
-# =============================================================================
-def classify_intent(state: AgentState) -> dict:
-    """
-    Dùng LLM phân loại câu hỏi: tìm sản phẩm hay hỏi chuyện?
-    Tiết kiệm token bằng prompt ngắn gọn.
-    """
-    question = state["question"]
-
-    response = llm.invoke([
-        SystemMessage(content=(
-            "Classify the user message as either 'product_search' or 'chitchat'.\n"
-            "product_search: user wants to find, buy, compare products or ask about specs/price.\n"
-            "chitchat: greetings, off-topic, or unrelated to shopping.\n"
-            "Reply with ONLY one word: product_search or chitchat"
-        )),
-        HumanMessage(content=question),
-    ])
-
-    intent = response.content.strip().lower()
-    if intent not in ("product_search", "chitchat"):
-        intent = "product_search"  # default: coi như hỏi sản phẩm
-
-    print(f"[classify_intent] '{question}' → {intent}")
-    return {"intent": intent}
-
-
-# =============================================================================
-# NODE 2: Gọi LLM với function calling để xác định search params
+# NODE 1: Gọi LLM với function calling để xác định search params (kiêm phân loại intent)
 # =============================================================================
 def call_tool(state: AgentState) -> dict:
     """
@@ -87,7 +59,7 @@ def call_tool(state: AgentState) -> dict:
 
 
 # =============================================================================
-# NODE 3: Execute SQL query (logic thuần, không LLM)
+# NODE 2: Execute SQL query (logic thuần, không LLM)
 # =============================================================================
 def execute_search(state: AgentState) -> dict:
     """
@@ -120,7 +92,7 @@ def execute_search(state: AgentState) -> dict:
 
 
 # =============================================================================
-# NODE 4: Sinh câu trả lời từ kết quả tìm kiếm
+# NODE 3: Sinh câu trả lời từ kết quả tìm kiếm
 # =============================================================================
 def generate_answer(state: AgentState) -> dict:
     """
@@ -145,9 +117,9 @@ def generate_answer(state: AgentState) -> dict:
 
 
 # =============================================================================
-# NODE 5: Xử lý chitchat (không cần tool)
+# NODE 4: Xử lý chitchat (không cần tool)
 # =============================================================================
-def handle_chitchat(state: AgentState) -> dict:
+def handle_chitchat() -> dict:
     """Trả lời cho câu hỏi không liên quan đến sản phẩm."""
     print("[handle_chitchat] Không liên quan → từ chối")
     return {

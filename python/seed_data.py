@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from models import (Base, User, Category, Brand, Product, Post, Image, Review,
-                    Phone, Laptop, Accessory, Fashion, HomeAppliance, RoleEnum)
+from .models import (Base, User, Category, Brand, Product, Post, Image, Review,
+                     Phone, Laptop, Accessory, Fashion, HomeAppliance, RoleEnum)
 from dotenv import load_dotenv
 import os
 

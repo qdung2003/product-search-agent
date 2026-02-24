@@ -1,15 +1,81 @@
 # =============================================================================
 # BACKEND API SERVER - AI AGENT E-COMMERCE (LangGraph version)
 # =============================================================================
-# Chạy: python -m backend.app
+# Chạy: python -m python.app
 # API endpoint: http://localhost:5000/api/chat
 # =============================================================================
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
-from .config import OPENAI_API_KEY, MODEL
+from .config import MODEL
 from .graph import create_graph
+
+# Mapping tên cột tiếng Anh → tiếng Việt
+COLUMN_VI = {
+    # posts
+    "description": "Mô tả",
+    "price": "Giá",
+    "sale_price": "Giá KM",
+    "currency": "Đơn vị tiền",
+    "quantity": "Số lượng",
+    "sold_count": "Đã bán",
+    # products
+    "name": "Tên",
+    # brands
+    "brand": "Thương hiệu",
+    # phones
+    "battery": "Pin",
+    "ram": "RAM",
+    "storage": "Bộ nhớ",
+    "screen_size": "Màn hình",
+    "os": "Hệ điều hành",
+    # laptops
+    "battery_hours": "Pin",
+    "cpu": "CPU",
+    "gpu": "GPU",
+    # accessories
+    "accessory_type": "Loại",
+    "compatible_with": "Tương thích",
+    # fashion
+    "size": "Kích cỡ",
+    "color": "Màu sắc",
+    "gender": "Giới tính",
+    # shared
+    "material": "Chất liệu",
+    # home_appliances
+    "power": "Công suất",
+    "voltage": "Điện áp",
+    "warranty_months": "Bảo hành",
+    # ID columns (từ {table}.*)
+    "id": "ID",
+    "product_id": "Mã SP",
+}
+
+# Mapping đơn vị cho từng cột (hiển thị sau giá trị)
+COLUMN_UNIT = {
+    "battery": "mAh",
+    "ram": "GB",
+    "storage": "GB",
+    "screen_size": "inch",
+    "battery_hours": "giờ",
+    "power": "W",
+    "voltage": "V",
+    "warranty_months": "tháng",
+}
+
+
+def translateColumn(products):
+    """Chuyển key tiếng Anh → tiếng Việt, thêm đơn vị sau giá trị."""
+    result = []
+    for p in products:
+        translated = {}
+        for k, v in p.items():
+            new_key = COLUMN_VI.get(k, k)
+            unit = COLUMN_UNIT.get(k)
+            new_value = f"{v} {unit}" if unit and v is not None else v
+            translated[new_key] = new_value
+        result.append(translated)
+    return result
 
 # Flask app
 app = Flask(__name__)
@@ -20,7 +86,7 @@ graph = create_graph()
 
 # Short-term memory: lưu hội thoại gần đây theo conversation_id
 conversations = {}
-MAX_HISTORY = 5
+MAX_HISTORY = 4
 
 
 # =============================================================================
@@ -57,7 +123,7 @@ def chat():
         })
 
         text = result["answer"]
-        products = result["products"]
+        products = translateColumn(result["products"])
 
         print(f"AI trả lời: {text}")
         print(f"{'='*50}\n")
@@ -73,12 +139,3 @@ def chat():
         print(f"Error: {e}")
         return jsonify({"text": f"Lỗi: {str(e)}", "products": []})
 
-
-# =============================================================================
-# RUN
-# =============================================================================
-if __name__ == '__main__':
-    if not OPENAI_API_KEY:
-        print("CANH BAO: Chua set OPENAI_API_KEY!")
-    print(f"Server: http://localhost:5000 | Model: {MODEL} | Engine: LangGraph")
-    app.run(debug=True, host='0.0.0.0', port=5000)
