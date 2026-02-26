@@ -1,6 +1,6 @@
 # E-Commerce AI Agent Chatbot
 
-AI chatbot hỗ trợ tìm kiếm sản phẩm e-commerce bằng ngôn ngữ tự nhiên tiếng Việt.
+AI chatbot hỗ trợ tìm kiếm sản phẩm e-commerce bằng ngôn ngữ tự nhiên tiếng Việt, sử dụng LangGraph + OpenAI.
 
 ## Architecture
 
@@ -11,21 +11,21 @@ User → Frontend (HTML/JS) → Flask API → LangGraph StateGraph → PostgreSQ
 **LangGraph flow:**
 ```
 classify_intent → route_by_intent
-                    ├── product_search → call_tool → execute_search → generate_answer
-                    └── chitchat → handle_chitchat
+                    ├── product_search → call_tool → execute_search → END
+                    ├── chit_chat → chitchat → END
+                    └── handle_other_types → END (trả lời cố định)
 ```
 
-- **classify_intent**: Phân loại ý định user (tìm sản phẩm / hỏi chuyện)
+- **classify_intent**: Phân loại ý định user (tìm sản phẩm / hỏi chuyện / ngoài phạm vi) bằng gpt-4.1-mini
 - **call_tool**: LLM + function calling → xác định category, filters, sort
-- **execute_search**: Build SQL an toàn (parameterized query) + query DB
-- **generate_answer**: LLM tóm tắt kết quả
-- **handle_chitchat**: Trả lời câu hỏi ngoài phạm vi
+- **execute_search**: Build SQL an toàn (parameterized query) + query DB → trả products trực tiếp
+- **chitchat**: Trả lời hội thoại mua sắm bằng LLM (có hỗ trợ history)
 
 ## Tech Stack
 
-- **Backend**: Python, Flask, LangGraph, LangChain, OpenAI API
+- **Backend**: Python, Flask, LangGraph, LangChain, OpenAI API (gpt-4.1-mini)
 - **Frontend**: HTML, CSS, JavaScript (vanilla)
-- **Database**: PostgreSQL
+- **Database**: PostgreSQL + SQLAlchemy + Alembic (migration)
 - **Security**: Column whitelist, operator whitelist, parameterized queries
 
 ## Setup
@@ -42,7 +42,7 @@ cp .env.example .env
 python -m python.seed_data
 
 # 4. Chạy server
-python -m python.app
+python backend.py
 # → http://localhost:5000
 
 # 5. Mở frontend
@@ -56,7 +56,7 @@ python/
 ├── __init__.py     # Package init
 ├── app.py          # Flask API + LangGraph integration
 ├── graph.py        # StateGraph definition (nodes + edges)
-├── nodes.py        # Node functions (classify, search, answer...)
+├── nodes.py        # Node functions (classify, search, chitchat)
 ├── state.py        # AgentState TypedDict
 ├── config.py       # Category mapping + whitelist columns
 ├── tools.py        # Tool schema + system prompts
@@ -65,11 +65,32 @@ python/
 ├── models.py       # SQLAlchemy models
 └── seed_data.py    # Database seeder (5 categories, 50 products)
 
-frontend/
-├── trang-chu/      # Trang chủ chat UI
-└── danh-sach-san-pham/
+alembic/             # Database migrations
+├── versions/        # Migration files
 
-backend.py          # Entry point (python backend.py)
+frontend/
+└── trang-chu/       # Trang chủ chat UI
+
+backend.py           # Entry point (python backend.py)
+```
+
+## API Endpoint
+
+**POST** `/api/chat`
+
+```json
+{
+  "question": "Tìm điện thoại pin trên 4000mAh",
+  "conversation_id": "user-123"
+}
+```
+
+**Response:**
+```json
+{
+  "text": "Tìm thấy 5 sản phẩm phù hợp.",
+  "products": [...]
+}
 ```
 
 ## Supported Categories
