@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -c:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:pricepertoken.com)"
     ]
   }
 }

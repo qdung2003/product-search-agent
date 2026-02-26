@@ -41,6 +41,7 @@ async function sendMessage() {
     showTyping();
 
     try {
+        const startTime = performance.now();
         // Gọi API Backend
         const res = await fetch(API_URL, {
             method: 'POST',
@@ -51,6 +52,10 @@ async function sendMessage() {
         });
 
         const response = await res.json();
+
+        const endTime = performance.now();
+        const responseTime = ((endTime - startTime) / 1000).toFixed(2);
+        console.log("Thời gian chờ: ", responseTime)
 
         hideTyping();
         addMessage(response.text, false, response.products || []);

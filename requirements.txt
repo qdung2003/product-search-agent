@@ -6,3 +6,5 @@ python-dotenv
 langgraph
 langchain-openai
 langchain-core
+sqlalchemy
+unidecode

@@ -1,86 +1,107 @@
 # =============================================================================
-# LANGGRAPH NODES - Các hàm xử lý cho từng node trong graph
+# LANGGRAPH NODES
 # =============================================================================
 
-import json
 from decimal import Decimal
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-from .config import OPENAI_API_KEY, MODEL
-from .tools import TOOLS, SYSTEM_PROMPT_TOOL, SYSTEM_PROMPT_ANSWER
+from .config import OPENAI_API_KEY
+from .tools import INTENT_PROMPT, INTENT_SCHEMA, TOOLS, get_product_search_prompt
 from .sql_builder import build_sql
 from .database import query_db
 from .state import AgentState
 
-# LLM instance dùng chung
-llm = ChatOpenAI(model=MODEL, api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(model="gpt-4.1-mini", api_key=OPENAI_API_KEY)
 
 
 # =============================================================================
-# NODE 1: Gọi LLM với function calling để xác định search params (kiêm phân loại intent)
+# NODE 1: Phân loại intent
+# =============================================================================
+def classify_intent(state: AgentState) -> dict:
+    structured_llm = llm.with_structured_output(INTENT_SCHEMA)
+
+    messages = [
+        SystemMessage(content=INTENT_PROMPT),
+        HumanMessage(content=state["question"])
+    ]
+
+    result = structured_llm.invoke(messages)
+    print(f"[classify_intent] {result}")
+
+    intent = result["intent"]
+
+    if intent == "handle_other_types":
+        return {"intent": intent, "answer": "Xin lỗi, chúng tôi chỉ hỗ trợ: Điện thoại, Laptop, Phụ kiện, Thời trang, Gia dụng.", "products": []}
+
+    return {"intent": intent, "category": result["category"]}
+
+
+# =============================================================================
+# NODE 2a: Trả lời chitchat bằng LLM
+# =============================================================================
+def chitchat(state: AgentState) -> dict:
+    messages = [SystemMessage(content="You are a shopping assistant. Reply briefly in Vietnamese. Only answer shopping-related questions. If off-topic, remind user you only assist with shopping.")]
+
+    for msg in state["history"]:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+
+    messages.append(HumanMessage(content=state["question"]))
+
+    response = llm.invoke(messages)
+
+    return {"answer": response.content, "products": []}
+
+
+# =============================================================================
+# NODE 2b: Gọi tool 
 # =============================================================================
 def call_tool(state: AgentState) -> dict:
-    """
-    LLM với function calling → trả về category, filters, sort.
-    Giống Phase 1 của app.py cũ.
-    """
+    category = state["category"]
     question = state["question"]
     history = state["history"]
 
-    # Build messages giống logic cũ
-    messages = [SystemMessage(content=SYSTEM_PROMPT_TOOL)]
+    messages = [SystemMessage(content=get_product_search_prompt(category))]
+
     for msg in history:
         if msg["role"] == "user":
             messages.append(HumanMessage(content=msg["content"]))
         elif msg["role"] == "assistant":
-            from langchain_core.messages import AIMessage
             messages.append(AIMessage(content=msg["content"]))
+
     messages.append(HumanMessage(content=question))
 
-    # Gọi LLM với tools (OpenAI function calling)
     llm_with_tools = llm.bind_tools(TOOLS)
     response = llm_with_tools.invoke(messages)
 
-    # Kiểm tra có tool call không
-    if not response.tool_calls:
-        print("[call_tool] LLM không gọi tool → chitchat")
-        return {"intent": "chitchat", "tool_args": None}
+    if response.tool_calls:
+        tool_args = response.tool_calls[0]["args"]
+        tool_args["category"] = category
+        return {"tool_args": tool_args}
 
-    # Lấy tool call đầu tiên
-    tool_call = response.tool_calls[0]
-    tool_args = tool_call["args"]
-
-    print(f"[call_tool] Category: {tool_args.get('category')}")
-    print(f"[call_tool] Filters: {tool_args.get('filters', [])}")
-    print(f"[call_tool] Sort: {tool_args.get('sort_column')} {tool_args.get('sort_direction')}")
-
-    return {"tool_args": tool_args}
+    return {"tool_args": {"category": category}}
 
 
 # =============================================================================
-# NODE 2: Execute SQL query (logic thuần, không LLM)
+# NODE 3: Execute SQL
 # =============================================================================
 def execute_search(state: AgentState) -> dict:
-    """
-    Build SQL an toàn và query database.
-    Tái sử dụng build_sql() và query_db() hiện có.
-    """
-    tool_args = state["tool_args"]
+    tool_args = state.get("tool_args")
 
     if not tool_args:
         print("[execute_search] Không có tool_args → bỏ qua")
-        return {"products": []}
+        return {}
 
-    # Build SQL (backend validate + parameterized query)
     sql, sql_params = build_sql(**tool_args)
     print(f"[execute_search] SQL: {sql}")
     print(f"[execute_search] Params: {sql_params}")
 
-    # Execute query
     products = query_db(sql, sql_params) if sql else []
 
-    # Convert Decimal → float để JSON serializable
+    # Convert Decimal → float
     for p in products:
         for k, v in p.items():
             if isinstance(v, Decimal):
@@ -88,41 +109,15 @@ def execute_search(state: AgentState) -> dict:
 
     print(f"[execute_search] Tìm thấy: {len(products)} sản phẩm")
 
-    return {"products": products}
+    # Không còn generate_answer nữa → trả products trực tiếp
+    if not products:
+        return {
+            "products": [],
+            "answer": "Không tìm thấy sản phẩm phù hợp."
+        }
 
-
-# =============================================================================
-# NODE 3: Sinh câu trả lời từ kết quả tìm kiếm
-# =============================================================================
-def generate_answer(state: AgentState) -> dict:
-    """
-    LLM tóm tắt kết quả tìm kiếm thành câu trả lời ngắn gọn.
-    Giống Phase 2 của app.py cũ.
-    """
-    question = state["question"]
-    products = state["products"]
-
-    # Tạo bản slim cho LLM (tiết kiệm token)
-    slim = [{"name": p["name"], "price": p["price"]} for p in products]
-    product_info = json.dumps(slim, ensure_ascii=False)
-
-    response = llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT_ANSWER),
-        HumanMessage(content=f"Câu hỏi: {question}\nKết quả: {product_info}"),
-    ])
-
-    answer = response.content
-    print(f"[generate_answer] {answer}")
-    return {"answer": answer}
-
-
-# =============================================================================
-# NODE 4: Xử lý chitchat (không cần tool)
-# =============================================================================
-def handle_chitchat() -> dict:
-    """Trả lời cho câu hỏi không liên quan đến sản phẩm."""
-    print("[handle_chitchat] Không liên quan → từ chối")
     return {
-        "answer": "Xin lỗi, tôi chỉ hỗ trợ tìm sản phẩm trong cửa hàng.",
-        "products": [],
+        "products": products,
+        "answer": f"Tìm thấy {len(products)} sản phẩm phù hợp."
     }
+

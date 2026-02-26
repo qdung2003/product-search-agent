@@ -6,11 +6,11 @@
 # =============================================================================
 
 from python.app import app
-from python.config import OPENAI_API_KEY, MODEL
+from python.config import OPENAI_API_KEY
 
 if __name__ == '__main__':
     if not OPENAI_API_KEY:
         print("CANH BAO: Chua set OPENAI_API_KEY!")
-    print(f"Server: http://localhost:5000 | Model: {MODEL}")
+    print(f"Server: http://localhost:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)
 

@@ -5,9 +5,9 @@
 # API endpoint: http://localhost:5000/api/chat
 # =============================================================================
 
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from .config import MODEL
 from .graph import create_graph
 
 # Mapping tên cột tiếng Anh → tiếng Việt
@@ -72,6 +72,9 @@ def translateColumn(products):
         for k, v in p.items():
             new_key = COLUMN_VI.get(k, k)
             unit = COLUMN_UNIT.get(k)
+            
+            if isinstance(v, float) and round(v, 2) != v:
+                v = round(v, 2)
             new_value = f"{v} {unit}" if unit and v is not None else v
             translated[new_key] = new_value
         result.append(translated)
@@ -94,7 +97,7 @@ MAX_HISTORY = 4
 # =============================================================================
 @app.route('/')
 def home():
-    return jsonify({"status": "running", "model": MODEL, "engine": "langgraph"})
+    return jsonify({"status": "running", "engine": "langgraph"})
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -112,20 +115,20 @@ def chat():
 
     try:
         # Chạy LangGraph
+        start = time.time()
         result = graph.invoke({
             "question": question,
             "conversation_id": conv_id,
             "history": history,
-            "intent": "",
-            "tool_args": None,
-            "products": [],
-            "answer": "",
         })
+
+        llm_time = time.time() - start
 
         text = result["answer"]
         products = translateColumn(result["products"])
 
         print(f"AI trả lời: {text}")
+        print(f"Thời gian phản hồi: {llm_time:.2f}s")
         print(f"{'='*50}\n")
 
         # Lưu vào history (chỉ giữ user + assistant, bỏ tool messages)

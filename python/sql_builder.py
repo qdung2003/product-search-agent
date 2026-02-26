@@ -62,6 +62,7 @@ def build_sql(category: str, product_name: str = None, filters: list = None,
     # Backend validate product_name: dùng EXISTS để check + lọc trong 1 câu SQL
     if product_name and product_name.strip():
         productName = unidecode(re.sub(r'\s+', ' ', product_name.strip()))
+        print('productName: ', product_name)
         sql += f"""
             AND (
                 CASE

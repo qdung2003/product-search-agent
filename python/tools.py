@@ -1,19 +1,93 @@
 from .config import CATEGORY_MAP
 
+
+INTENT_PROMPT = """
+You are an intent classifier.
+
+Allowed categories:
+["Dien thoai", "Laptop", "Phu kien", "Thoi trang", "Gia dung"]
+
+Classify the user message:
+
+1. Greeting, general chat, not about buying anything → chit_chat
+2. Wants to buy/search something NOT in allowed categories (e.g. house, car, food, book) → handle_other_types
+3. Wants to buy/search something IN allowed categories → product_search
+
+Return structured JSON.
+"""
+
+INTENT_SCHEMA = {
+    "name": "intent_classification",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "intent": {
+                "type": "string",
+                "enum": [
+                    "chit_chat",
+                    "handle_other_types",
+                    "product_search"
+                ]
+            },
+            "category": {
+                "type": ["string", "null"]
+            }
+        },
+        "required": ["intent", "category"],
+        "additionalProperties": False,
+        "if": {
+            "properties": {"intent": {"const": "product_search"}}
+        },
+        "then": {
+            "properties": {
+                "category": {
+                    "enum": [
+                        "Dien thoai",
+                        "Laptop",
+                        "Phu kien",
+                        "Thoi trang",
+                        "Gia dung"
+                    ]
+                }
+            }
+        },
+        "else": {
+            "properties": {
+                "category": {"const": None}
+            }
+        }
+    }
+}
+
+
+# Prompt động theo category (chỉ trả cột liên quan)
+def get_product_search_prompt(category):
+    info = CATEGORY_MAP[category]
+    table = info["table"]
+    columns = info["columns"].get(table, [])
+    cat_columns = ", ".join([f"{table}.{c}" for c in columns])
+
+    return "\n".join([
+        f"Extract search params for category: {category}.",
+        "product_name: specific type in VIETNAMESE as user typed. Skip if asking about entire category.",
+        "filters: only for numeric conditions (price, ram, storage...) or exact match. Do NOT duplicate product_name as a filter.",
+        "column must use table.column format as listed below.",
+        "",
+        "General columns: posts.price, posts.sale_price, posts.sold_count, products.name",
+        f"Category columns: {cat_columns}"
+    ])
+
+
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "search_products",
-            "description": "Search products in the store by category, filters, and sorting.",
+            "description": "Extract product search filters and sorting from user query.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "category": {
-                        "type": "string",
-                        "enum": list(CATEGORY_MAP.keys())
-                    },
-                    "product_name": { 
+                    "product_name": {
                         "type": "string"
                     },
                     "filters": {
@@ -31,46 +105,8 @@ TOOLS = [
                     "sort_column": {"type": "string"},
                     "sort_direction": {"type": "string", "enum": ["ASC", "DESC"]},
                 },
-                "required": ["category"]
+                "required": []
             }
         }
     }
 ]
-
-# Dienthoai: phones.battery, phones.ram, phones.storage, phones.screen_size, phones.os
-'''
-Shopping assistantool for the 5 categories below, otherwise do NOT call tool.",
-product_type: specific type within category in VIETNAMESE as user typed (e.g. áo, ốp lưng, chuột). Skip if asking about entire category.
-column must use table.column format as listed below.
-
-Common columns: posts.price, posts.sale_price, posts.sold_count, products.name
-
-Dien thoai: phones.battery, phones.ram, phones.storage, phones.screen_size, phones.os
-Laptop: laptops.battery_hours, laptops.ram, laptops.storage, laptops.screen_size, laptops.cpu, laptops.gpu
-Phu kien: accessories.accessory_type, accessories.compatible_with, accessories.material
-Thoi trang: fashion.size, fashion.color, fashion.material, fashion.gender
-Gia dung: home_appliances.power, home_appliances.voltage, home_appliances.warranty_months
-'''
-
-# Prompt lần 1: phân loại + build tool call (cần column info)
-# Tạo danh sách mô tả cột cho từng category
-category_columns = []
-for cat, info in CATEGORY_MAP.items():
-    table = info["table"]
-    columns = info["columns"].get(table, [])
-    column_strings = [f"{table}.{c}" for c in columns]
-    line = f"{cat}: " + ", ".join(column_strings)
-    category_columns.append(line)
-
-SYSTEM_PROMPT_TOOL = "\n".join([
-    "Shopping assistantool for the 5 categories below, otherwise do NOT call tool.",
-    "product_name: specific type within category in VIETNAMESE as user typed (e.g. áo, ốp lưng, chuột). Skip if asking about entire category.",
-    "column must use table.column format as listed below.",
-    "",
-    "General columns: posts.price, posts.sale_price, posts.sold_count, products.name",
-    "Column by category:",
-    *category_columns
-])
-
-# Prompt lần 2: tóm tắt kết quả (KHÔNG cần column info → tiết kiệm token)
-SYSTEM_PROMPT_ANSWER = "Reply with ONE short summary sentence in Vietnamese. Do NOT list products (UI handles that). Do NOT suggest, compare, or ask follow-up."
