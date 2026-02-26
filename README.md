@@ -23,7 +23,7 @@ classify_intent → route_by_intent
 
 ## Tech Stack
 
-- **Backend**: Python, Flask, LangGraph, LangChain, OpenAI API (gpt-4.1-mini)
+- **Backend**: Python, Flask, LangGraph, LangChain, OpenAI API (gpt-5-mini)
 - **Frontend**: HTML, CSS, JavaScript (vanilla)
 - **Database**: PostgreSQL + SQLAlchemy + Alembic (migration)
 - **Security**: Column whitelist, operator whitelist, parameterized queries
